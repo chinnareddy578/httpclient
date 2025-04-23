@@ -1,0 +1,169 @@
+package httpclient
+
+import (
+    "bytes"
+    "errors"
+    "io"
+    "net/http"
+    "net/http/httptest"
+    "strings"
+    "testing"
+    "log"
+    "time"
+)
+
+func TestNewHTTPClient(t *testing.T) {
+    logger := log.Default()
+    client := NewHTTPClient(5*time.Second, 3, 1*time.Second, logger)
+
+    if client.client.Timeout != 5*time.Second {
+        t.Errorf("Expected timeout to be 5 seconds, got %v", client.client.Timeout)
+    }
+    if client.retryCount != 3 {
+        t.Errorf("Expected retry count to be 3, got %d", client.retryCount)
+    }
+    if client.retryDelay != 1*time.Second {
+        t.Errorf("Expected retry delay to be 1 second, got %v", client.retryDelay)
+    }
+    if client.logger != logger {
+        t.Errorf("Expected logger to be set correctly")
+    }
+}
+
+func TestDo_Success(t *testing.T) {
+    server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        w.WriteHeader(http.StatusOK)
+        w.Write([]byte("OK"))
+    }))
+    defer server.Close()
+
+    logger := log.Default()
+    client := NewHTTPClient(5*time.Second, 0, 0, logger)
+
+    req, _ := http.NewRequest(http.MethodGet, server.URL, nil)
+    resp, err := client.Do(req)
+
+    if err != nil {
+        t.Fatalf("Expected no error, got %v", err)
+    }
+    if resp.StatusCode != http.StatusOK {
+        t.Errorf("Expected status code 200, got %d", resp.StatusCode)
+    }
+}
+
+func TestDo_Retry(t *testing.T) {
+    attempts := 0
+    server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        attempts++
+        if attempts < 3 {
+            http.Error(w, "Temporary error", http.StatusInternalServerError)
+            return
+        }
+        w.WriteHeader(http.StatusOK)
+        w.Write([]byte("OK"))
+    }))
+    defer server.Close()
+
+    logger := log.Default()
+    client := NewHTTPClient(5*time.Second, 2, 100*time.Millisecond, logger)
+
+    req, _ := http.NewRequest(http.MethodGet, server.URL, nil)
+    resp, err := client.Do(req)
+
+    if err != nil {
+        t.Fatalf("Expected no error, got %v", err)
+    }
+    if resp.StatusCode != http.StatusOK {
+        t.Errorf("Expected status code 200, got %d", resp.StatusCode)
+    }
+    if attempts != 3 {
+        t.Errorf("Expected 3 attempts, got %d", attempts)
+    }
+}
+
+func TestGet(t *testing.T) {
+    server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        if r.Header.Get("Authorization") != "Bearer token" {
+            http.Error(w, "Unauthorized", http.StatusUnauthorized)
+            return
+        }
+        w.WriteHeader(http.StatusOK)
+        w.Write([]byte("OK"))
+    }))
+    defer server.Close()
+
+    logger := log.Default()
+    client := NewHTTPClient(5*time.Second, 0, 0, logger)
+
+    headers := map[string]string{
+        "Authorization": "Bearer token",
+    }
+    resp, err := client.Get(server.URL, headers)
+
+    if err != nil {
+        t.Fatalf("Expected no error, got %v", err)
+    }
+    if resp.StatusCode != http.StatusOK {
+        t.Errorf("Expected status code 200, got %d", resp.StatusCode)
+    }
+}
+
+func TestPost(t *testing.T) {
+    server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        body, _ := io.ReadAll(r.Body)
+        if !strings.Contains(string(body), "test payload") {
+            http.Error(w, "Bad Request", http.StatusBadRequest)
+            return
+        }
+        w.WriteHeader(http.StatusOK)
+        w.Write([]byte("OK"))
+    }))
+    defer server.Close()
+
+    logger := log.Default()
+    client := NewHTTPClient(5*time.Second, 0, 0, logger)
+
+    body := bytes.NewBufferString("test payload")
+    headers := map[string]string{
+        "Content-Type": "application/json",
+    }
+    resp, err := client.Post(server.URL, body, headers)
+
+    if err != nil {
+        t.Fatalf("Expected no error, got %v", err)
+    }
+    if resp.StatusCode != http.StatusOK {
+        t.Errorf("Expected status code 200, got %d", resp.StatusCode)
+    }
+}
+
+func TestReadResponseBody(t *testing.T) {
+    resp := &http.Response{
+        Body: io.NopCloser(strings.NewReader("response body")),
+    }
+
+    body, err := ReadResponseBody(resp)
+    if err != nil {
+        t.Fatalf("Expected no error, got %v", err)
+    }
+    if body != "response body" {
+        t.Errorf("Expected body to be 'response body', got '%s'", body)
+    }
+}
+
+func TestReadResponseBody_Error(t *testing.T) {
+    resp := &http.Response{
+        Body: io.NopCloser(&errorReader{}),
+    }
+
+    _, err := ReadResponseBody(resp)
+    if err == nil {
+        t.Fatalf("Expected an error, got nil")
+    }
+}
+
+type errorReader struct{}
+
+func (e *errorReader) Read(p []byte) (n int, err error) {
+    return 0, errors.New("read error")
+}
