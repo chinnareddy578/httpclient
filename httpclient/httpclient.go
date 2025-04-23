@@ -1,9 +1,11 @@
 package httpclient
 
 import (
+	"crypto/tls"
 	"errors"
 	"io"
 	"log"
+	"math"
 	"net/http"
 	"time"
 )
@@ -14,18 +16,72 @@ type HTTPClient struct {
 	retryCount int
 	retryDelay time.Duration
 	logger     *log.Logger
+	backoff    func(attempt int) time.Duration
 }
 
-// NewHTTPClient creates a new instance of HTTPClient.
-func NewHTTPClient(timeout time.Duration, retryCount int, retryDelay time.Duration, logger *log.Logger) *HTTPClient {
-	return &HTTPClient{
-		client: &http.Client{
-			Timeout: timeout,
-		},
-		retryCount: retryCount,
-		retryDelay: retryDelay,
-		logger:     logger,
+// Option is a functional option for configuring the HTTPClient.
+type Option func(*HTTPClient)
+
+// WithTimeout sets a custom timeout for the HTTP client.
+func WithTimeout(timeout time.Duration) Option {
+	return func(hc *HTTPClient) {
+		hc.client.Timeout = timeout
 	}
+}
+
+// WithRetry configures retry count and delay.
+func WithRetry(retryCount int, retryDelay time.Duration) Option {
+	return func(hc *HTTPClient) {
+		hc.retryCount = retryCount
+		hc.retryDelay = retryDelay
+	}
+}
+
+// WithExponentialBackoff configures exponential backoff for retries.
+func WithExponentialBackoff(baseDelay time.Duration) Option {
+	return func(hc *HTTPClient) {
+		hc.backoff = func(attempt int) time.Duration {
+			return time.Duration(float64(baseDelay) * math.Pow(2, float64(attempt-1)))
+		}
+	}
+}
+
+// WithLogger sets a custom logger for the HTTP client.
+func WithLogger(logger *log.Logger) Option {
+	return func(hc *HTTPClient) {
+		hc.logger = logger
+	}
+}
+
+// WithTransport sets a custom Transport for the HTTP client.
+func WithTransport(transport http.RoundTripper) Option {
+	return func(hc *HTTPClient) {
+		hc.client.Transport = transport
+	}
+}
+
+// WithTLSConfig sets a custom TLS configuration for the HTTP client.
+func WithTLSConfig(tlsConfig *tls.Config) Option {
+	return func(hc *HTTPClient) {
+		if transport, ok := hc.client.Transport.(*http.Transport); ok {
+			transport.TLSClientConfig = tlsConfig
+		} else {
+			hc.client.Transport = &http.Transport{TLSClientConfig: tlsConfig}
+		}
+	}
+}
+
+// NewHTTPClient creates a new instance of HTTPClient with the provided options.
+func NewHTTPClient(options ...Option) *HTTPClient {
+	hc := &HTTPClient{
+		client:  &http.Client{},
+		logger:  log.Default(),
+		backoff: func(attempt int) time.Duration { return 0 }, // Default: no backoff
+	}
+	for _, opt := range options {
+		opt(hc)
+	}
+	return hc
 }
 
 // Do sends an HTTP request and returns an HTTP response, with retry and logging.
@@ -33,8 +89,12 @@ func (hc *HTTPClient) Do(req *http.Request) (*http.Response, error) {
 	var lastErr error
 	for i := 0; i <= hc.retryCount; i++ {
 		if i > 0 {
-			hc.logger.Printf("Retrying request (%d/%d)...", i, hc.retryCount)
-			time.Sleep(hc.retryDelay)
+			delay := hc.retryDelay
+			if hc.backoff != nil {
+				delay = hc.backoff(i)
+			}
+			hc.logger.Printf("Retrying request (%d/%d) after %v...", i, hc.retryCount, delay)
+			time.Sleep(delay)
 		}
 
 		resp, err := hc.client.Do(req)
