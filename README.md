@@ -33,20 +33,34 @@ import (
 func main() {
 	client := httpclient.New()
 
-	// Example GET request
-	response, err := client.Get("https://api.example.com/data", nil)
+	// Example GET request with headers
+	headers := map[string]string{
+		"Authorization": "Bearer your-token",
+	}
+	response, err := client.Get("https://api.example.com/data", headers)
 	if err != nil {
 		fmt.Println("Error:", err)
 		return
 	}
 	fmt.Println("Response:", string(response.Body))
 
-	// Example POST request with JSON payload
+	// Example POST request with JSON payload and headers
 	payload := map[string]interface{}{
 		"name": "John Doe",
 		"age":  30,
 	}
-	response, err = client.Post("https://api.example.com/users", payload, nil)
+	response, err = client.Post("https://api.example.com/users", payload, headers)
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
+	fmt.Println("Response:", string(response.Body))
+
+	// Example PUT request
+	updatePayload := map[string]interface{}{
+		"age": 31,
+	}
+	response, err = client.Put("https://api.example.com/users/1", updatePayload, headers)
 	if err != nil {
 		fmt.Println("Error:", err)
 		return
