@@ -1,33 +1,17 @@
 package httpclient
 
 import (
+	"bytes"
 	"crypto/tls"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"math"
 	"net/http"
 	"time"
 )
-
-// HTTPClient is a wrapper around the standard http.Client with additional features.
-type HTTPClient struct {
-	client     *http.Client
-	retryCount int
-	retryDelay time.Duration
-	logger     *log.Logger
-	backoff    func(attempt int) time.Duration
-}
-
-// Option is a functional option for configuring the HTTPClient.
-type Option func(*HTTPClient)
-
-// WithTimeout sets a custom timeout for the HTTP client.
-func WithTimeout(timeout time.Duration) Option {
-	return func(hc *HTTPClient) {
-		hc.client.Timeout = timeout
-	}
-}
 
 // WithRetry configures retry count and delay.
 func WithRetry(retryCount int, retryDelay time.Duration) Option {
@@ -68,6 +52,27 @@ func WithTLSConfig(tlsConfig *tls.Config) Option {
 		} else {
 			hc.client.Transport = &http.Transport{TLSClientConfig: tlsConfig}
 		}
+	}
+}
+
+// Add default headers to the HTTPClient.
+func WithDefaultHeaders(headers map[string]string) Option {
+	return func(hc *HTTPClient) {
+		if hc.client.Transport == nil {
+			hc.client.Transport = &http.Transport{}
+		}
+		originalTransport := hc.client.Transport
+		hc.client.Transport = &headerTransport{
+			base:    originalTransport,
+			headers: headers,
+		}
+	}
+}
+
+// WithTimeout configures the timeout for the HTTP client.
+func WithTimeout(timeout time.Duration) Option {
+	return func(hc *HTTPClient) {
+		hc.client.Timeout = timeout
 	}
 }
 
@@ -140,6 +145,44 @@ func (hc *HTTPClient) Post(url string, body io.Reader, headers map[string]string
 	return hc.Do(req)
 }
 
+// Put is a helper method for making PUT requests.
+func (hc *HTTPClient) Put(url string, body io.Reader, headers map[string]string) (*http.Response, error) {
+	req, err := http.NewRequest(http.MethodPut, url, body)
+	if err != nil {
+		return nil, err
+	}
+	for key, value := range headers {
+		req.Header.Set(key, value)
+	}
+	return hc.Do(req)
+}
+
+// Delete is a helper method for making DELETE requests.
+func (hc *HTTPClient) Delete(url string, headers map[string]string) (*http.Response, error) {
+	req, err := http.NewRequest(http.MethodDelete, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	for key, value := range headers {
+		req.Header.Set(key, value)
+	}
+	return hc.Do(req)
+}
+
+// PostJSON is a helper method for making POST requests with JSON body.
+func (hc *HTTPClient) PostJSON(url string, jsonBody interface{}, headers map[string]string) (*http.Response, error) {
+	// Ensure headers map is initialized before adding Content-Type.
+	if headers == nil {
+		headers = make(map[string]string)
+	}
+	body, err := json.Marshal(jsonBody)
+	if err != nil {
+		return nil, err
+	}
+	headers["Content-Type"] = "application/json"
+	return hc.Post(url, bytes.NewReader(body), headers)
+}
+
 // ReadResponseBody reads and returns the response body as a string.
 func ReadResponseBody(resp *http.Response) (string, error) {
 	defer resp.Body.Close()
@@ -148,4 +191,13 @@ func ReadResponseBody(resp *http.Response) (string, error) {
 		return "", err
 	}
 	return string(body), nil
+}
+
+// ReadJSONResponseBody reads and unmarshals the response body into the target interface.
+func ReadJSONResponseBody(resp *http.Response, target interface{}) error {
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+	return json.NewDecoder(resp.Body).Decode(target)
 }
