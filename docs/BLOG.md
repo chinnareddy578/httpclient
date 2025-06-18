@@ -1,25 +1,14 @@
-# httpclient
+# httpclient: A Modern, Lightweight HTTP Client for Go
 
-A modern, lightweight, and extensible HTTP client library for Go, designed to make HTTP requests simple, reliable, and powerful. `httpclient` wraps Go's standard `http.Client` and adds advanced features such as retries, exponential backoff, custom logging, default headers, and more, all with an easy-to-use API.
+## Introduction
 
----
-
-## Features
-
-- **Simple API**: Clean, intuitive methods for GET, POST, PUT, DELETE, and JSON requests.
-- **Retries & Exponential Backoff**: Automatically retry failed requests with optional exponential backoff.
-- **Custom Logging**: Plug in your own logger for detailed request/response logs.
-- **Default Headers**: Set headers to be included in every request.
-- **Custom Transport & TLS**: Use your own `http.RoundTripper` or TLS configuration.
-- **Timeouts**: Easily configure request timeouts.
-- **Response Helpers**: Utility functions to read and unmarshal response bodies.
-- **Well-tested**: Comprehensive unit tests for reliability.
+`httpclient` is a lightweight and efficient HTTP client library written in Go. It simplifies making HTTP requests by providing an easy-to-use interface for GET, POST, PUT, DELETE, and other HTTP methods. This library is designed to handle common use cases like setting headers, query parameters, and handling JSON payloads, while also supporting advanced features like retries, exponential backoff, custom logging, and more.
 
 ---
 
 ## Architecture
 
-The core of `httpclient` is the `HTTPClient` struct, which wraps Go's `http.Client` and is configured using functional options. Helper methods provide a simple interface for common HTTP operations, while advanced features like retries and logging are built-in.
+The architecture of `httpclient` is modular and extensible, built around a core `HTTPClient` struct that wraps Go's standard `http.Client` and adds additional features via functional options. Here is a high-level architecture diagram:
 
 ```mermaid
 flowchart TD
@@ -36,6 +25,26 @@ flowchart TD
   F -->|"returns"| K["http.Response"]
   K -->|"used by"| L["ReadResponseBody, ReadJSONResponseBody"]
 ```
+
+---
+
+## Detailed Explanation
+
+### Core Components
+
+- **HTTPClient struct**: The main client, wrapping Go's `http.Client` and adding retry, logging, backoff, and default headers.
+- **Options**: Functional options like `WithRetry`, `WithTimeout`, `WithLogger`, `WithTransport`, `WithTLSConfig`, and `WithDefaultHeaders` allow you to customize the client.
+- **Helpers**: Methods like `Get`, `Post`, `Put`, `Delete`, and `PostJSON` provide a simple interface for common HTTP operations.
+- **Retry & Backoff**: Built-in support for retrying failed requests, with optional exponential backoff.
+- **Custom Logging**: Plug in your own logger for request/response logging.
+- **Default Headers**: Set headers to be included in every request.
+- **Response Helpers**: Utility functions to read and unmarshal response bodies.
+
+### Why Use httpclient?
+- **Simplicity**: Clean, easy-to-use API for common HTTP tasks.
+- **Extensibility**: Add custom behavior via options.
+- **Reliability**: Automatic retries and backoff for transient errors.
+- **Testability**: Well-tested with unit tests and easy to mock.
 
 ---
 
@@ -133,25 +142,22 @@ fmt.Println(bodyStr)
 
 ---
 
-## Advanced Features & Options
+## Advanced Features
 
-- **WithRetry(retryCount, retryDelay)**: Set the number of retries and delay between retries for failed requests.
-- **WithExponentialBackoff(baseDelay)**: Enable exponential backoff for retries.
-- **WithLogger(logger)**: Use a custom logger for request/response logging.
-- **WithTransport(transport)**: Use a custom `http.RoundTripper` for advanced networking.
-- **WithTLSConfig(tlsConfig)**: Set a custom TLS configuration.
-- **WithDefaultHeaders(headers)**: Set default headers for all requests.
-- **WithTimeout(timeout)**: Set a timeout for all requests.
+- **Retries & Exponential Backoff**: Use `WithRetry` and `WithExponentialBackoff` to handle transient errors gracefully.
+- **Custom Logger**: Pass your own logger for detailed request/response logs.
+- **Custom Transport & TLS**: Use `WithTransport` and `WithTLSConfig` for advanced networking needs.
+- **Default Headers**: Set headers to be included in every request.
 
 ---
 
 ## Submitting Suggestions and Issues
 
-We welcome suggestions, bug reports, and feature requests! Please use the [GitHub Issues page](https://github.com/chinnareddy578/httpclient/issues) to submit your feedback.
+We welcome suggestions and issues! Please use the [GitHub Issues page](https://github.com/chinnareddy578/httpclient/issues) to submit bugs, feature requests, or general feedback.
 
 ---
 
-## Contribution Guide
+## Contributing
 
 1. Fork the repository on GitHub.
 2. Create a new branch for your feature or bug fix:
@@ -181,5 +187,4 @@ We welcome suggestions, bug reports, and feature requests! Please use the [GitHu
 
 ## License
 
-This project is licensed under the MIT License. See the `LICENSE` file for details.
-
+This project is licensed under the MIT License. See the `LICENSE` file for details. 
